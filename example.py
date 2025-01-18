@@ -11,5 +11,4 @@ port = config['settings']['port']
 bitcoin = Bitcoin(user, password, host, port)
 
 
-latestBlock = bitcoin.getLatestBlock()
-print(latestBlock)
+fees = bitcoin.getMempoolFees()

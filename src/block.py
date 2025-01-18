@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 
 
-class Block:
+class BlockLite:
     def __init__(self, block: dict):
         self.height = block['height']
         self.version = block['version']
@@ -105,7 +105,7 @@ class Transaction:
     def __repr__(self):
         return f"tx: {self.txid}, fee: {self.fee}, feeRate: {self.feeRate}"
         
-class BlockDetailed(Block):
+class Block(BlockLite):
     def __init__(self, block: dict, price: tuple[int, int], txs: list[Transaction]):
         super().__init__(block)
         self.transactions: list[Transaction] = list(txs)
