@@ -1,36 +1,21 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from bitcoinrpc.authproxy import AuthServiceProxy
+from src.BitcoinRpcClient import BitcoinRpcClient
 import pycoingecko
-import numpy as np
 import requests
 
-from src.block import Block, BlockLite, Transaction
+from src.Block import Block, Transaction
 
 class Bitcoin:
     """Bitcoin client for interacting with Bitcoin Core and related services."""
     
-    def __init__(self, user, password, host, port):
+    def __init__(self, user, password, host="localhost", port=8332):
         """Initialize the Bitcoin client with connection parameters."""
-        self.rpcConnection = AuthServiceProxy(f"http://{user}:{password}@{host}:{port}", timeout=300)
+        self.client = BitcoinRpcClient(user, password, host, port)
         self.priceApi = pycoingecko.CoinGeckoAPI()
         self.user = user
         self.password = password
         self.host = host
         self.port = port
         self.printInfo()
-
-    # RPC Connection Management
-    def rpc(self, method: str, *args):
-        """Execute an RPC method with automatic reconnection on failure."""
-        for _ in range(10):
-            try:
-                return self.rpcConnection.__getattr__(method)(*args)
-            except Exception:
-                self.rpcConnection = AuthServiceProxy(
-                    f"http://{self.user}:{self.password}@{self.host}:{self.port}"
-                )
-        print(f"RPC request failed: {method} ({args})")
-        exit(1)
 
     def printInfo(self):
         """Print current blockchain and network information."""
@@ -49,32 +34,28 @@ class Bitcoin:
     # Block Operations
     def getBlockCount(self) -> int:
         """Get the current block height."""
-        return self.rpc("getblockcount")
+        return self.client.getBlockCount()
 
     def getBlockFromHeight(self, blockHeight: int) -> Block:
         """Get detailed block information including price and transaction data."""
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            future_hash = executor.submit(self.rpc, "getblockhash", blockHeight)
-            blockHash = future_hash.result()
-            
+        try:
+            blockHash = self.client.getblockhash(blockHeight)
             if not blockHash:
-                raise Exception("Block hash not found")
-
-            future_block = executor.submit(self.rpc, "getblock", blockHash, 2)
-            block = future_block.result()
+                raise Exception(f"Block hash not found for height {blockHeight}")
+                
+            block = self.client.getblock(blockHash, 2)
+            if not block:
+                raise Exception(f"Block data not found for hash {blockHash}")
+                
+            price = self.getPriceFromBlockTimestamp(block)
+            txs = self.buildTxs(block["tx"])
+            block = Block(block, price, txs)
+            print(f"Retrieved block {blockHeight}")
+            return block
             
-            if block:
-                future_price = executor.submit(self.getPriceFromBlockTimestamp, block)
-                future_txs = executor.submit(self.buildTxs, block["tx"])
-                
-                price = future_price.result()
-                txs = future_txs.result()
-                
-                block = Block(block, price, txs)
-                print(f"retrieved block {blockHeight}")
-                return block
-
-            raise Exception("Block not found")
+        except Exception as e:
+            print(f"Error retrieving block {blockHeight}: {str(e)}")
+            raise
 
     def getLatestBlock(self) -> Block:
         """Get the most recent block."""
@@ -89,7 +70,7 @@ class Bitcoin:
 
     def getUtxoSetInfo(self) -> dict:
         """Get information about the current UTXO set."""
-        return self.rpc("gettxoutsetinfo", "none")
+        return self.client.gettxoutsetinfo("none")
 
     # Transaction Operations
     def findTxByValue(self, value: float, epsilon=0.001):
@@ -103,7 +84,7 @@ class Bitcoin:
 
     def getTransaction(self, txid: str):
         """Get transaction details by transaction ID."""
-        return self.rpc("gettransaction", txid)
+        return self.client.gettransaction(txid)
 
     def buildTxs(self, txs: list[dict]) -> list[Transaction]:
         """Build transaction objects with input values."""
@@ -112,24 +93,11 @@ class Bitcoin:
             for vin in tx['vin']:
                 if 'coinbase' in vin:
                     continue
-                prev_tx = self.rpc("getrawtransaction", vin['txid'], True)
+                prev_tx = self.client.getrawtransaction(vin['txid'], True)
                 prev_output = prev_tx['vout'][vin['vout']]
                 vin['value'] = prev_output['value']
             result.append(Transaction(tx))
         return result
-
-    def getInputValue(self) -> list[float]:
-        """Get values of transaction inputs."""
-        values = []
-        for vin in self.inputs:
-            try:
-                prev_tx = Bitcoin.staticRpc("getrawtransaction", vin['txid'], True)
-                prev_output = prev_tx['vout'][vin['vout']]
-                values.append(float(prev_output['value']))
-            except Exception as e:
-                print(f"Error getting input value: {e}")
-                values.append(0)
-        return values
 
     # Mempool Operations
     def getMempoolFees(self) -> int:
@@ -139,7 +107,7 @@ class Bitcoin:
 
         for txid in mempoolTxIds:
             try:
-                tx = self.rpc("getmempoolentry", txid)
+                tx = self.client.getmempoolentry(txid)
                 feeRates.append(float(tx["fees"]["base"] / tx["vsize"]) * 1e8)
             except:
                 pass
@@ -148,11 +116,11 @@ class Bitcoin:
 
     def getMempool(self) -> dict:
         """Get detailed mempool information."""
-        return self.rpc("getrawmempool", True)
+        return self.client.getrawmempool(True)
 
     def getMempoolTxIds(self) -> dict:
         """Get mempool transaction ids."""
-        return self.rpc("getrawmempool")
+        return self.client.getrawmempool()
 
     # Price Operations
     def getPrice(self) -> tuple[int, int]:
@@ -187,10 +155,4 @@ class Bitcoin:
     # Blockchain Info
     def getBlockchainInfo(self) -> dict:
         """Get general blockchain information."""
-        return self.rpc("getblockchaininfo")
-
-
-if __name__ == "__main__":
-    bitcoin = Bitcoin()
-    info = bitcoin.getUtxoSetInfo()
-    print(info)
+        return self.client.getblockchaininfo()
