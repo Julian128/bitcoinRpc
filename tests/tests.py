@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from src.Bitcoin import Bitcoin
+from bitcoinrpc import Bitcoin
 from configparser import ConfigParser
 import time
 from datetime import datetime

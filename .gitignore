@@ -1,4 +1,5 @@
 venv
 bitcoinPy.conf
 sandbox
-src/__pycache__
+bitcoinrpc/__pycache__
+bitcoinrpc_client.egg-info

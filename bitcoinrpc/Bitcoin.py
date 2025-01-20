@@ -1,8 +1,8 @@
-from src.BitcoinRpcClient import BitcoinRpcClient
+from bitcoinrpc.BitcoinRpcClient import BitcoinRpcClient
 import pycoingecko
 import requests
 
-from src.Block import Block, Transaction
+from bitcoinrpc.Block import Block, Transaction
 
 class Bitcoin:
     """Bitcoin client for interacting with Bitcoin Core and related services."""
@@ -50,7 +50,6 @@ class Bitcoin:
             price = self.getPriceFromBlockTimestamp(block)
             txs = self.buildTxs(block["tx"])
             block = Block(block, price, txs)
-            print(f"Retrieved block {blockHeight}")
             return block
             
         except Exception as e:
